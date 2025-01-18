@@ -1,0 +1,15 @@
+{
+    "version": "0.1.0",
+    "configurations": [
+        {
+            "name": "Python: app.py",
+            "type": "python",
+            "request": "launch",
+            "program": "/workspaces/transcribe/app.py",
+            "env": {
+                "PYTHONPATH": "/workspaces/transcibe"
+            },
+            "console": "integratedTerminal"
+        }
+    ]
+}

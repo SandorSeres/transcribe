@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="hu">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR és Képleírás Chat</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            font-family: Arial, sans-serif;
+        }
+
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            width: 100%;
+        }
+
+        .chatbox {
+            flex: 1;
+            padding: 10px;
+            overflow-y: auto;
+            background-color: #f5f5f5;
+            width: 100%;
+        }
+
+        .user-input-container {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            padding: 10px;
+            background-color: #fff;
+            border-top: 1px solid #ddd;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .model-selection {
+            display: flex;
+            gap: 10px;
+        }
+
+        .file-input,
+        .option-select {
+            padding: 5px;
+            font-size: 16px;
+        }
+
+        .send-button {
+            padding: 10px;
+            background-color: #007bff;
+            border: none;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            text-align: center;
+        }
+
+        .send-button:hover {
+            background-color: #0056b3;
+        }
+
+        .message {
+            margin: 10px 0;
+            display: flex;
+            flex-direction: row;
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message.agent {
+            justify-content: flex-start;
+        }
+
+        .bubble {
+            padding: 10px 20px;
+            border-radius: 20px;
+            max-width: 60%;
+            word-wrap: break-word;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .message.user .bubble {
+            background-color: #007bff;
+            color: white;
+        }
+
+        .message.agent .bubble {
+            background-color: #e5e5ea;
+            color: black;
+        }
+
+        .bubble img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 10px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="chat-container">
+        <div id="chatbox" class="chatbox"></div>
+        <div class="user-input-container">
+            <div class="input-group">
+                <select id="taskType" class="option-select">
+                    <option value="ocr">OCR (Szövegkinyerés)</option>
+                    <option value="description">Képleírás</option>
+                </select>
+                <input type="file" id="imageInput" class="file-input" accept="image/*">
+            </div>
+            <div class="model-selection">
+                <select id="model_type" class="option-select" onchange="updateModelNames()">
+                    {% for model_type in model_options.keys() %}
+                    <option value="{{ model_type }}" {% if model_type=='openai' %}selected{% endif %}>{{ model_type |
+                        capitalize }}</option>
+                    {% endfor %}
+                </select>
+                <select id="model_name" class="option-select">
+                    {% for model_name in model_options['openai'] %}
+                    <option value="{{ model_name }}" {% if model_name=='gpt-3.5-turbo' %}selected{% endif %}>{{
+                        model_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button onclick="sendImage()" class="send-button">Küldés</button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            updateModelNames();
+        });
+
+        function updateModelNames() {
+            const modelTypeSelect = document.getElementById("model_type");
+            const modelNameSelect = document.getElementById("model_name");
+            const selectedType = modelTypeSelect.value;
+            const modelOptions = {{ model_options | tojson
+        }};
+
+        modelNameSelect.innerHTML = "";
+        (modelOptions[selectedType] || []).forEach(model => {
+            const option = document.createElement("option");
+            option.value = model;
+            option.textContent = model;
+            if (selectedType === "openai" && model === "gpt-3.5-turbo") {
+                option.selected = true;
+            }
+            modelNameSelect.appendChild(option);
+        });
+        }
+
+        async function sendImage() {
+            const fileInput = document.getElementById("imageInput");
+            const taskType = document.getElementById("taskType").value;
+            const modelType = document.getElementById("model_type").value;
+            const modelName = document.getElementById("model_name").value;
+            const chatbox = document.getElementById("chatbox");
+
+            if (!fileInput.files.length) {
+                alert("Kérlek, tölts fel egy képet!");
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append("file", file);
+            formData.append("taskType", taskType);
+            formData.append("modelType", modelType);
+            formData.append("modelName", modelName);
+
+            // Kép megjelenítése
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                addMessageToChatbox("user", `Feltöltött kép (${taskType}) modell: ${modelName}`, e.target.result);
+            }
+            reader.readAsDataURL(file);
+
+            try {
+                const response = await fetch(`/upload_ocr/`, {
+                    method: "POST",
+                    body: formData
+                });
+
+                const result = await response.json();
+                addMessageToChatbox("agent", result.extracted_text || "Nincs eredmény");
+            } catch (error) {
+                addMessageToChatbox("agent", "Hiba történt a feldolgozás során.");
+            }
+        }
+
+        function addMessageToChatbox(sender, message, imageUrl = null) {
+            const chatbox = document.getElementById("chatbox");
+            const messageDiv = document.createElement("div");
+            messageDiv.classList.add("message", sender);
+
+            const bubbleDiv = document.createElement("div");
+            bubbleDiv.classList.add("bubble");
+
+            if (imageUrl) {
+                const img = document.createElement("img");
+                img.src = imageUrl;
+                img.style.maxWidth = "100%";
+                img.style.height = "auto";
+                bubbleDiv.appendChild(img);
+            }
+
+            const textDiv = document.createElement("div");
+            textDiv.textContent = message;
+            bubbleDiv.appendChild(textDiv);
+
+            messageDiv.appendChild(bubbleDiv);
+            chatbox.appendChild(messageDiv);
+            chatbox.scrollTop = chatbox.scrollHeight;
+        }
+    </script>
+</body>
+
+</html>

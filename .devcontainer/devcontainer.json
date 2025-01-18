@@ -1,0 +1,28 @@
+{
+	"name": "agents",
+	"build": {
+		"context": "..",
+		"dockerfile": "../Dockerfile"
+	},
+	"remoteEnv": {
+		"PYTHONPATH": "/workspaces/transcribe"
+	},
+	"workspaceFolder": "/workspaces/transcribe",
+	"runArgs": [
+		"--network",
+		"host",
+		"--env",
+		"PYTHONPATH=/workspaces/transcibe"
+	],
+	// An array port numbers to forward
+	"forwardPorts": [
+		3000
+	],
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-vscode-remote.remote-containers"
+			]
+		}
+	}
+}

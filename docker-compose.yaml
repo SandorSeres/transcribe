@@ -1,0 +1,39 @@
+services:
+  ollama:
+    image: sseres/ollama:latest
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_FLASH_ATTENTION=1  
+      - OLLAMA_KV_CACHE_TYPE=q8_0
+      - GIN_MODE=release
+      - OLLAMA_RATE_LIMIT_GENERATE=100
+      - OLLAMA_RATE_LIMIT_EMBEDDINGS=50
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    container_name: transcribe_app
+    ports:
+      - "8000:8000"  # FastAPI app HTTP
+    depends_on:
+      - ollama
+    volumes:
+      - app_data:/app/data
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - NVIDIA_VISIBLE_DEVICES=all  # GPU láthatóság
+      - NVIDIA_DRIVER_CAPABILITIES=all  # GPU funkciók engedélyezése
+
+volumes:
+  app_data:
+
