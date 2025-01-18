@@ -149,23 +149,27 @@ class ModelManager:
                     yield chunk
 
     async def generate_complete(self, messages: List[Dict[str, str]]) -> str:
+
+        await self.generate_complete(self.model_type,self.model_name,messages)
+
+    async def generate_complete(self, model_type,model_name,messages: List[Dict[str, str]]) -> str:
         """
         A kiválasztott modellnek elküldi a kérést és a teljes választ adja vissza egyben.
         """
-        if self.model_type == "ollama":
-            return await self._generate_ollama_complete(messages)
-        elif self.model_type == "openai":
-            return await self._generate_openai_complete(messages)
+        if model_type == "ollama":
+            return await self._generate_ollama_complete(model_name,messages)
+        elif model_type == "openai":
+            return await self._generate_openai_complete(model_name,messages)
         else:
             raise ValueError(f"Unsupported model type: {self.model_type}")
 
-    async def _generate_ollama_complete(self, messages: List[Dict[str, str]]) -> str:
+    async def _generate_ollama_complete(self, model_name,messages: List[Dict[str, str]]) -> str:
         prompt = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
         async with httpx.AsyncClient(timeout=600) as client:
             response = await client.post(
                 self.ollama_api_url,
                 json={
-                    "model": self.model_name,
+                    "model": model_name,
                     "prompt": prompt,
                     "options": {"num_ctx": 60000}
                 },
@@ -186,13 +190,13 @@ class ModelManager:
             
             return result
 
-    async def _generate_openai_complete(self, messages: List[Dict[str, str]]) -> str:
+    async def _generate_openai_complete(self, model_name, messages: List[Dict[str, str]]) -> str:
         """
         OpenAI modell teljes válasz generálása.
         """
         headers = {"Authorization": f"Bearer {self.openai_api_key}"}
         body = {
-            "model": self.model_name,
+            "model": model_name,
             "messages": messages,
             "temperature": 0.1,
             "top_p": 1,

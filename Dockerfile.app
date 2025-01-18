@@ -19,6 +19,7 @@ RUN pip install --default-timeout=100 -r requirements.txt
 
 # Másolja az alkalmazás kódját a konténerbe
 COPY ./app.py /app/
+COPY ./cli.py /app/
 COPY ./model_manager.py /app/
 COPY ./static /app/static
 COPY ./templates /app/templates

@@ -28,7 +28,8 @@ services:
     depends_on:
       - ollama
     volumes:
-      - app_data:/app/data
+      - ./images:/app/images
+      - ./processed_texts:/app/processed_texts
     environment:
       - OLLAMA_HOST=http://ollama:11434
       - NVIDIA_VISIBLE_DEVICES=all  # GPU láthatóság

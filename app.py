@@ -45,6 +45,21 @@ def get_model_manager():
 
 model_manager = get_model_manager()
 
+@app.post("/generate")
+async def generate(
+    query: str = Form("text") ,
+    modelType: str = Form("ollama"),
+    modelName: str = Form("llama3.2-vision")
+):
+    # Külső ModelManager osztály process_image metódusának meghívása
+    extracted_text = await model_manager.generate_complete(
+        messages=[{"role": "user", "content": query}],
+        model_type=modelType,
+        model_name=modelName
+    )
+    return JSONResponse(content={"text": extracted_text})
+     
+
 @app.post("/upload_ocr/")
 async def upload_and_process_image(
     file: UploadFile = File(...),
