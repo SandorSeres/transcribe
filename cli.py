@@ -42,12 +42,25 @@ async def process_image(image_path):
 
             result_ollama = response_ollama.json().get("extracted_text", "")
 
+            # Ollama llava-llama-3-8b feldolgozás
+            data_ollama_1 = {"taskType": "describe", "modelType": "ollama", "modelName": "nsheth/llava-llama-3-8b-v1_1-int4"}
+            response_ollama_1 = await client.post(API_URL, files=files, data=data_ollama_1)
+            response_ollama_1.raise_for_status()
+            print(f"✅ Ollama response received for {image_path}")
+
+            result_ollama_1 = response_ollama_1.json().get("extracted_text", "")
+
             # Kombinálás OpenAI GPT-4o segítségével
             prompt = (
-                "Merge the following two image descriptions into a single, coherent, well-structured caption:\n\n"
+                "Merge the following three image descriptions into a single, coherent, and well-structured caption. "
+                "Ensure the final description is accurate, concise, and free of any hallucinations. "
+                "Prioritize factual correctness and consistency while preserving important details.\n\n"
                 f"**Description 1 (GPT-4o):** {result_openai}\n\n"
-                f"**Description 2 (Ollama Llava3.2):** {result_ollama}"
-            )
+                f"**Description 2 (Ollama Llava3.2):** {result_ollama}\n\n"
+                f"**Description 3 (Ollama llava-llama-3-8b):** {result_ollama_1}\n\n"
+                "Your response should be in Hungarian. If there are any discrepancies between the descriptions, "
+                "resolve them by using the most accurate and logically consistent details."
+            ) 
             data_generate = {"query": prompt, "modelType": "openai", "modelName": "gpt-4o"}
             response_combined = await client.post(API_GENERATE, data=data_generate)
             response_combined.raise_for_status()
@@ -58,7 +71,10 @@ async def process_image(image_path):
             # Eredmény mentése fájlba
             output_path = os.path.join(OUTPUT_DIR, f"{Path(image_path).stem}.txt")
             with open(output_path, "w", encoding="utf-8") as f:
-                f.write(final_text)
+                f.write(f"1.\n {result_openai}\n")
+                f.write(f"2.\n {result_ollama}\n")
+                f.write(f"3.\n {result_ollama_1}\n")
+                f.write(f"Final:\n {final_text}\n")
 
             print(f"✅ Processed successfully: {image_path} -> {output_path}")
     except httpx.TimeoutException:

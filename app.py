@@ -30,7 +30,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 model_options = {
-    "ollama": ["llama3.2-vision"],
+    "ollama": ["llama3.2-vision", "llava", "nsheth/llava-llama-3-8b-v1_1-int4"],
     "openai": ["gpt-4o", "gpt-4o-mini"]
 }
 
@@ -84,7 +84,7 @@ async def upload_and_process_image(
             "3. If any words or phrases are unclear, indicate this with [unclear] in your transcription.\n"
             "Provide only the transcription without any additional comments."
             if taskType == "ocr" else
-            "Act as a vision assistant. Describe the image with a detailed caption, including objects, scene, colors, and any important elements."
+            "Act as an art analysis assistant. Describe the painting in a structured and detailed manner, step by step. Start by identifying the general style and artistic movement it belongs to. Then, analyze the composition, color palette, lighting, brushstroke techniques, and the overall mood. Consider the subject matter, including depicted figures, objects, and their interactions. Discuss any symbolic or emotional elements, as well as possible interpretations. If the painting has historical or cultural significance, provide relevant context. If the painting is abstract or modern, focus on its use of form, texture, and the emotions it evokes. Conclude with a summary of its artistic impact and unique characteristics."
         )
         
         # Külső ModelManager osztály process_image metódusának meghívása
