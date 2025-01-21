@@ -51,16 +51,44 @@ async def process_image(image_path):
             result_ollama_1 = response_ollama_1.json().get("extracted_text", "")
 
             # Kombinálás OpenAI GPT-4o segítségével
-            prompt = (
-                "Merge the following three image descriptions into a single, coherent, and well-structured caption. "
-                "Ensure the final description is accurate, concise, and free of any hallucinations. "
-                "Prioritize factual correctness and consistency while preserving important details.\n\n"
+            # Art
+            painting_prompt = (
+                "Merge the following three image descriptions into a single, detailed, and well-structured analysis. "
+                "Ensure the final description is comprehensive, factually accurate, and free of any hallucinations. "
+                "Prioritize factual correctness, logical consistency, and coherence while preserving all relevant details.\n\n"
                 f"**Description 1 (GPT-4o):** {result_openai}\n\n"
                 f"**Description 2 (Ollama Llava3.2):** {result_ollama}\n\n"
                 f"**Description 3 (Ollama llava-llama-3-8b):** {result_ollama_1}\n\n"
                 "Your response should be in Hungarian. If there are any discrepancies between the descriptions, "
-                "resolve them by using the most accurate and logically consistent details."
-            ) 
+                "resolve them by using the most accurate, logically consistent, and contextually appropriate details. "
+                "Structure the response into distinct sections covering style, composition, color palette, lighting, "
+                "brushstroke techniques, mood, symbolism, historical context, and overall interpretation."
+            )
+            # Historycal photos
+            prompt = (
+                "Combine the following three historical photograph descriptions into a single, structured, and detailed analysis. "
+                "The final description must be comprehensive, factually accurate, and free of any hallucinations. "
+                "Prioritize factual correctness, logical consistency, and coherence while ensuring that all relevant details are preserved.\n\n"
+                
+                f"**Description 1 (GPT-4o - Primary Source):** {result_openai}\n\n"
+                f"**Description 2 (Ollama Llava3.2 - Secondary Source):** {result_ollama}\n\n"
+                f"**Description 3 (Ollama llava-llama-3-8b - Supplementary Source):** {result_ollama_1}\n\n"
+                
+                "Your response should be in Hungarian. When discrepancies arise between the descriptions, "
+                "resolve them by prioritizing the most factually accurate, logically consistent, and contextually appropriate details. "
+                "If subjective or stylistic elements from a source enhance the description without contradicting facts, integrate them where appropriate.\n\n"
+                
+                "Structure your response into **clearly defined sections**, covering:\n"
+                "- **Time Period and Location** (historical and geographical context)\n"
+                "- **Composition and Lighting** (framing, depth of field, and use of light and shadow)\n"
+                "- **Photographic Techniques** (camera positioning, exposure, and stylistic choices)\n"
+                "- **Depicted Subjects** (people, clothing, objects, and their arrangement)\n"
+                "- **Social and Historical Context** (cultural significance, events, or historical backdrop)\n"
+                "- **Interpretation and Overall Significance** (artistic, documentary, or symbolic meaning of the photograph)\n\n"
+                
+                "Ensure that the final analysis maintains a neutral, objective tone, focusing on the photograph’s historical and artistic value."
+            )
+
             data_generate = {"query": prompt, "modelType": "openai", "modelName": "gpt-4o"}
             response_combined = await client.post(API_GENERATE, data=data_generate)
             response_combined.raise_for_status()
@@ -71,9 +99,9 @@ async def process_image(image_path):
             # Eredmény mentése fájlba
             output_path = os.path.join(OUTPUT_DIR, f"{Path(image_path).stem}.txt")
             with open(output_path, "w", encoding="utf-8") as f:
-                f.write(f"1.\n {result_openai}\n")
-                f.write(f"2.\n {result_ollama}\n")
-                f.write(f"3.\n {result_ollama_1}\n")
+                # f.write(f"1.\n {result_openai}\n")
+                # f.write(f"2.\n {result_ollama}\n")
+                # f.write(f"3.\n {result_ollama_1}\n")
                 f.write(f"Final:\n {final_text}\n")
 
             print(f"✅ Processed successfully: {image_path} -> {output_path}")
@@ -84,9 +112,8 @@ async def process_image(image_path):
     except Exception as e:
         print(f"❌ Unexpected error processing {image_path}: {e}")
 
-import asyncio
 
-CONCURRENT_TASKS = 1  # Maximum párhuzamos feldolgozások száma
+CONCURRENT_TASKS = 3  # Maximum párhuzamos feldolgozások száma
 
 async def process_with_semaphore(semaphore, image_path):
     """Egy kép feldolgozása a megadott szemináriummal."""
@@ -95,7 +122,9 @@ async def process_with_semaphore(semaphore, image_path):
 
 async def main():
     """Az összes kép feldolgozása az IMAGE_DIR könyvtárban, korlátozott párhuzamossággal."""
-    images = [os.path.join(IMAGE_DIR, f) for f in os.listdir(IMAGE_DIR) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
+    VALID_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".tiff"}
+    images = [os.path.join(IMAGE_DIR, f) for f in os.listdir(IMAGE_DIR) if Path(f).suffix.lower() in VALID_IMAGE_EXTENSIONS]
+
     if not images:
         print("❌ No images found in the directory.")
         return
