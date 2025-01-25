@@ -33,7 +33,7 @@ model_options = {
     "ollama": ["llama3.2-vision", "llava", "nsheth/llava-llama-3-8b-v1_1-int4"],
     "openai": ["gpt-4o", "gpt-4o-mini"],
     "deepseek"  : ["deepseek-chat","deepseek-reasoner"],
-    "groq"  : ["llama-3.2-11b-vision-preview","llama-3.2-90b-vision-preview","Llama-3.3-70B-Instruct"]
+    "groq"  : ["llama-3.2-11b-vision-preview","llama-3.2-90b-vision-preview","llama3-8b-8192","gemma2-9b-it","mixtral-8x7b-32768"]
 }
 
 # Jinja2 sablonok beállítása
@@ -66,13 +66,28 @@ async def generate(
                     chunk = chunk.decode("utf-8")  # Átalakítjuk JSON-serializable formátumba
                     logger.info(chunk)
                 except UnicodeDecodeError:
-                    logger.error(f"Nem sikerült dekódolni a választ: {chunk}")
+                    logger.error(f"Nem sikerült dekódolni a választ: {chunk}", exc_info=True)
                     continue  # Ha nem dekódolható, kihagyjuk
 
             yield f"data: {json.dumps(chunk)}\n\n"
 
     return StreamingResponse(generate_response_stream(), media_type="text/event-stream")
 
+@app.post("/generate_full")
+async def generate_full(
+    query: str = Form("text") ,
+    modelType: str = Form("ollama"),
+    modelName: str = Form("llama3.2-vision")
+):
+    # Külső ModelManager osztály process_image metódusának meghívása
+    extracted_text = await model_manager.generate_complete(
+        messages=[{"role": "user", "content": query}],
+        model_type=modelType,
+        model_name=modelName
+    )
+    return JSONResponse(content={"text": extracted_text})
+   
+   
 @app.post("/upload_ocr/")
 async def upload_and_process_image(
     file: UploadFile = File(...),

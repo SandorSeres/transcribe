@@ -31,7 +31,7 @@ class ModelManager:
         self.groq_api_key = os.getenv("GROQ_API_KEY", "")
 
         # Ollama url/key
-        self.ollama_api_url = os.getenv("OLLAMA_CHAT_API_URL", "http://localhost:11434/api/chat")
+        self.ollama_api_url = os.getenv("OLLAMA_CHAT_API_URL", "http://localhost:11434/api/generate")
         
         # OpenAI url/key        
         self.openai_api_url = os.getenv("OPENAI_API_URL", "https://api.openai.com/v1/chat/completions")
@@ -101,8 +101,11 @@ class ModelManager:
         async with httpx.AsyncClient(timeout=600) as client:
             try:
                 logger.info(f"Prompt: {prompt}")
+                headers = {
+                    "Content-Type": "application/json"
+                }
                 response = await client.post(
-                    self.ollama_api_url,
+                    "http://ollama:11434/api/generate",
                     json={
                         "model": model_name,
                         "prompt": prompt,
@@ -110,9 +113,10 @@ class ModelManager:
                     },
                     timeout=600
                 )
-                logger.info(response)
+                logger.info(f"Ollama válasz: {response.status_code}")
 
                 async for line in response.aiter_lines():
+                    logger.info(f"Kapott sor: {line}")
                     line = line.strip()
                     if not line:
                         continue
@@ -122,15 +126,15 @@ class ModelManager:
                     except json.JSONDecodeError:
                         logger.warning(f"Ollama válasz nem JSON: {line}")
                         continue
-                
-                    logger.info(data)
+
+                    logger.info(f"JSON adat: {data}")
 
                     # Stream végének kezelése
                     if data.get("done"):
                         yield {"choices": [{"delta": {}, "finish_reason": "stop"}]}
                         break
 
-                    # Tartalom lekérése és átalakítása
+                    # Tartalom lekérése és átalakítása OpenAI formátumra
                     content = data.get("response", "")
                     if content:
                         yield {
@@ -142,7 +146,7 @@ class ModelManager:
                             ]
                         }
             except httpx.RequestError as e:
-                logger.error(f"Ollama request error: {e}")
+                logger.error(f"Ollama request error: {e}", exc_info=True)
                 raise HTTPException(status_code=500, detail="Ollama API hiba.")
 
     async def _generate_openai_stream(self, model_name, messages: List[Dict[str, str]]) -> AsyncGenerator[dict, None]:
@@ -214,7 +218,7 @@ class ModelManager:
             async with client.stream("POST", self.deepseek_api_url, headers=headers, json=body) as response:
                 if response.status_code != 200:
                     error_text = await response.aread()  # 🔥 Olvasd ki a teljes választ
-                    logger.error(f"DeepSeek API hibás kérés: {error_text.decode()}")  # 🔥 Naplózd az üzenetet
+                    logger.error(f"DeepSeek API hibás kérés: {error_text.decode()}", exc_info=True)  # 🔥 Naplózd az üzenetet
                     raise HTTPException(status_code=400, detail=f"DeepSeek API Bad Request: {error_text.decode()}")
                 async for line in response.aiter_lines():
                     if line.startswith("data: "):

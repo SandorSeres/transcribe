@@ -4,8 +4,15 @@ import httpx
 import json
 from pathlib import Path
 
+
+import logging  # Naplózáshoz
+
+# Logger beállítása
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 API_URL = "http://localhost:8000/upload_ocr/"
-API_GENERATE = "http://localhost:8000/generate/"
+API_GENERATE = "http://localhost:8000/generate_full/"
 IMAGE_DIR = "images"
 OUTPUT_DIR = "processed_texts"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -13,10 +20,10 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 async def process_image(image_path):
     """Feldolgoz egy képet a FastAPI végpont meghívásával."""
     try:
-        print(f"🔄 Processing: {image_path}")
+        logger.info(f"🔄 Processing: {image_path}")
 
         if not os.path.exists(image_path):
-            print(f"❌ File not found: {image_path}")
+            logger.info(f"❌ File not found: {image_path}")
             return
 
         with open(image_path, "rb") as f:
@@ -30,15 +37,16 @@ async def process_image(image_path):
             data_openai = {"taskType": "describe", "modelType": "openai", "modelName": "gpt-4o"}
             response_openai = await client.post(API_URL, files=files, data=data_openai)
             response_openai.raise_for_status()
-            print(f"✅ OpenAI response received for {image_path}")
-
+            logger.info(f"✅ OpenAI response received for {image_path}")
+                #print(f"Response: {response_openai.json()}")
             result_openai = response_openai.json().get("extracted_text", "")
 
             # Ollama llava3.2-vision feldolgozás
             data_ollama = {"taskType": "describe", "modelType": "groq", "modelName": "llama-3.2-11b-vision-preview"}
             response_ollama = await client.post(API_URL, files=files, data=data_ollama)
             response_ollama.raise_for_status()
-            print(f"✅ Ollama response received for {image_path}")
+            logger.info(f"✅ Ollama response received for {image_path}")
+            #print(f"Response: {response_ollama}")
 
             result_ollama = response_ollama.json().get("extracted_text", "")
 
@@ -46,7 +54,8 @@ async def process_image(image_path):
             data_ollama_1 = {"taskType": "describe", "modelType": "groq", "modelName": "llama-3.2-90b-vision-preview"}
             response_ollama_1 = await client.post(API_URL, files=files, data=data_ollama_1)
             response_ollama_1.raise_for_status()
-            print(f"✅ Ollama response received for {image_path}")
+            logger.info(f"✅ Ollama response received for {image_path}")
+            #print(f"Response: {response_ollama_1}")
 
             result_ollama_1 = response_ollama_1.json().get("extracted_text", "")
 
@@ -74,7 +83,7 @@ async def process_image(image_path):
                 f"**Description 2 (Ollama Llava3.2 - Secondary Source):** {result_ollama}\n\n"
                 f"**Description 3 (Ollama llava-llama-3-8b - Supplementary Source):** {result_ollama_1}\n\n"
                 
-                "Your response should be in Chinese. When discrepancies arise between the descriptions, "
+                "Your response should be in Hungarian. When discrepancies arise between the descriptions, "
                 "resolve them by prioritizing the most factually accurate, logically consistent, and contextually appropriate details. "
                 "If subjective or stylistic elements from a source enhance the description without contradicting facts, integrate them where appropriate.\n\n"
                 
@@ -90,10 +99,13 @@ async def process_image(image_path):
                 "Make sure the counting of objects. Crosscheck! if only one model count or models count differently, then do not include the number into the output"
             )
 
-            data_generate = {"query": prompt, "modelType": "openai", "modelName": "gpt-4o"}
+            data_generate = {"query": prompt, "modelType": "deepseek", "modelName": "deepseek-reasoner"}
             response_combined = await client.post(API_GENERATE, data=data_generate)
             response_combined.raise_for_status()
-            print(f"✅ Combined text response received for {image_path}")
+            logger.info(f"✅ Combined text response received for {image_path}")
+
+            print(f"Response: {response_combined.json()}")
+
 
             final_text = response_combined.json().get("text", "")
 
@@ -105,13 +117,13 @@ async def process_image(image_path):
                 # f.write(f"3.\n {result_ollama_1}\n")
                 f.write(f"Final:\n {final_text}\n")
 
-            print(f"✅ Processed successfully: {image_path} -> {output_path}")
+            logger.info(f"✅ Processed successfully: {image_path} -> {output_path}")
     except httpx.TimeoutException:
-        print(f"❌ Timeout error processing {image_path}")
+        logger.error(f"❌ Timeout error processing {image_path}", exc_info=True)
     except httpx.HTTPStatusError as e:
-        print(f"❌ HTTP error {e.response.status_code} processing {image_path}: {e.response.text}")
+        logger.error(f"❌ HTTP error {e.response.status_code} processing {image_path}: {e.response.text}", exc_info=True)
     except Exception as e:
-        print(f"❌ Unexpected error processing {image_path}: {e}")
+        logger.error(f"❌ Unexpected error processing {image_path}: {e}", exc_info=True)
 
 
 CONCURRENT_TASKS = 5  # Maximum párhuzamos feldolgozások száma
@@ -127,7 +139,7 @@ async def main():
     images = [os.path.join(IMAGE_DIR, f) for f in os.listdir(IMAGE_DIR) if Path(f).suffix.lower() in VALID_IMAGE_EXTENSIONS]
 
     if not images:
-        print("❌ No images found in the directory.")
+        logger.info("❌ No images found in the directory.")
         return
 
     semaphore = asyncio.Semaphore(CONCURRENT_TASKS)  # Párhuzamossági limit beállítása
