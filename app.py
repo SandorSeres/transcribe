@@ -32,6 +32,7 @@ app.add_middleware(
 model_options = {
     "ollama": ["llama3.2-vision", "llava", "nsheth/llava-llama-3-8b-v1_1-int4"],
     "openai": ["gpt-4o", "gpt-4o-mini"],
+    "deepseek"  : ["deepseek-chat","deepseek-reasoner"],
     "groq"  : ["llama-3.2-11b-vision-preview","llama-3.2-90b-vision-preview","Llama-3.3-70B-Instruct"]
 }
 
@@ -46,30 +47,42 @@ def get_model_manager():
 
 model_manager = get_model_manager()
 
+
 @app.post("/generate")
 async def generate(
-    query: str = Form("text") ,
+    text: str = Form("text"),
     modelType: str = Form("ollama"),
     modelName: str = Form("llama3.2-vision")
 ):
-    # Külső ModelManager osztály process_image metódusának meghívása
-    extracted_text = await model_manager.generate_complete(
-        messages=[{"role": "user", "content": query}],
-        model_type=modelType,
-        model_name=modelName
-    )
-    return JSONResponse(content={"text": extracted_text})
-     
+    async def generate_response_stream():
+        async for chunk in model_manager.generate_stream(
+            model_type=modelType,
+            model_name=modelName,
+            messages=[{"role": "user", "content": text}]
+        ):
+            # Ha a chunk byte-típusú, akkor dekódoljuk UTF-8-ra
+            if isinstance(chunk, bytes):
+                try:
+                    chunk = chunk.decode("utf-8")  # Átalakítjuk JSON-serializable formátumba
+                    logger.info(chunk)
+                except UnicodeDecodeError:
+                    logger.error(f"Nem sikerült dekódolni a választ: {chunk}")
+                    continue  # Ha nem dekódolható, kihagyjuk
+
+            yield f"data: {json.dumps(chunk)}\n\n"
+
+    return StreamingResponse(generate_response_stream(), media_type="text/event-stream")
 
 @app.post("/upload_ocr/")
 async def upload_and_process_image(
     file: UploadFile = File(...),
+    text: str = Form("text") ,
     taskType: str = Form("describe"),
     modelType: str = Form("ollama"),
     modelName: str = Form("llama3.2-vision")
 ):
     try:
-        temp_path = f"/tmp/{file.filename}"
+        temp_path = f"/tmp/{file.filename}" 
         with open(temp_path, "wb") as buffer:
             buffer.write(await file.read())
         
@@ -78,6 +91,8 @@ async def upload_and_process_image(
         os.remove(temp_path)
         
         # Üzenet összeállítása OCR vagy kép leírás számára
+        if not text:
+            text = "\n"
         """
         # Read watermeter
         (
@@ -95,13 +110,15 @@ async def upload_and_process_image(
             "1. Recognize all visible text in the image as accurately as possible.\n"
             "2. Maintain the original structure and formatting of the text.\n"
             "3. If any words or phrases are unclear, indicate this with [unclear] in your transcription.\n"
-            "Provide only the transcription without any additional comments."
+            "Provide only the transcription without any additional comments.\n"
+            f"{text}"
             if taskType == "ocr" else
              # analyse photo
-            "Act as a historical photography analysis assistant. Describe the photograph in a structured and detailed manner, step by step. Start by identifying the general time period, style, and possible origin based on clothing, objects, and setting. Then, analyze the composition, lighting, depth of field, and any notable photographic techniques. Consider the subject matter, including the people, their attire, expressions, and possible social or historical context. Discuss any symbolic or cultural elements, as well as potential interpretations of the image. If the photograph has historical or documentary significance, provide relevant background information. If it is a staged or portrait photograph, focus on the posed arrangement, the photographer's intent, and any notable features. Conclude with a summary of its historical impact and unique characteristics."
-            #"Act as an art analysis assistant. Describe the painting in a structured and detailed manner, step by step. Start by identifying the general style and artistic movement it belongs to. Then, analyze the composition, color palette, lighting, brushstroke techniques, and the overall mood. Consider the subject matter, including depicted figures, objects, and their interactions. Discuss any symbolic or emotional elements, as well as possible interpretations. If the painting has historical or cultural significance, provide relevant context. If the painting is abstract or modern, focus on its use of form, texture, and the emotions it evokes. Conclude with a summary of its artistic impact and unique characteristics."
+            "Act as a historical photography analysis assistant. Describe the photograph in a structured and detailed manner, step by step. Start by identifying the general time period, style, and possible origin based on clothing, objects, and setting. Then, analyze the composition, lighting, depth of field, and any notable photographic techniques. Consider the subject matter, including the people, their attire, expressions, and possible social or historical context. Discuss any symbolic or cultural elements, as well as potential interpretations of the image. If the photograph has historical or documentary significance, provide relevant background information. If it is a staged or portrait photograph, focus on the posed arrangement, the photographer's intent, and any notable features. Conclude with a summary of its historical impact and unique characteristics. \n\nDo it step by step. \n\n**Note:** be VERY precise when counting. If you are not sure in the number of objects (like persons) then do not mention numbers\n"
+            f"{text}"
         )
-        
+
+        logger.info(f"Prompt: {prompt}")        
         # Külső ModelManager osztály process_image metódusának meghívása
         extracted_text = await model_manager.process_image(
             messages=[{"role": "user", "content": prompt, "images": [base64_image]}],

@@ -35,7 +35,7 @@ async def process_image(image_path):
             result_openai = response_openai.json().get("extracted_text", "")
 
             # Ollama llava3.2-vision feldolgozás
-            data_ollama = {"taskType": "describe", "modelType": "ollama", "modelName": "llama3.2-vision"}
+            data_ollama = {"taskType": "describe", "modelType": "groq", "modelName": "llama-3.2-11b-vision-preview"}
             response_ollama = await client.post(API_URL, files=files, data=data_ollama)
             response_ollama.raise_for_status()
             print(f"✅ Ollama response received for {image_path}")
@@ -43,7 +43,7 @@ async def process_image(image_path):
             result_ollama = response_ollama.json().get("extracted_text", "")
 
             # Ollama llava-llama-3-8b feldolgozás
-            data_ollama_1 = {"taskType": "describe", "modelType": "ollama", "modelName": "nsheth/llava-llama-3-8b-v1_1-int4"}
+            data_ollama_1 = {"taskType": "describe", "modelType": "groq", "modelName": "llama-3.2-90b-vision-preview"}
             response_ollama_1 = await client.post(API_URL, files=files, data=data_ollama_1)
             response_ollama_1.raise_for_status()
             print(f"✅ Ollama response received for {image_path}")
@@ -57,8 +57,8 @@ async def process_image(image_path):
                 "Ensure the final description is comprehensive, factually accurate, and free of any hallucinations. "
                 "Prioritize factual correctness, logical consistency, and coherence while preserving all relevant details.\n\n"
                 f"**Description 1 (GPT-4o):** {result_openai}\n\n"
-                f"**Description 2 (Ollama Llava3.2):** {result_ollama}\n\n"
-                f"**Description 3 (Ollama llava-llama-3-8b):** {result_ollama_1}\n\n"
+                f"**Description 2 (Ollama llava-llama-3-11b):** {result_ollama}\n\n"
+                f"**Description 3 (Ollama llava-llama-3-90b):** {result_ollama_1}\n\n"
                 "Your response should be in Hungarian. If there are any discrepancies between the descriptions, "
                 "resolve them by using the most accurate, logically consistent, and contextually appropriate details. "
                 "Structure the response into distinct sections covering style, composition, color palette, lighting, "
@@ -74,7 +74,7 @@ async def process_image(image_path):
                 f"**Description 2 (Ollama Llava3.2 - Secondary Source):** {result_ollama}\n\n"
                 f"**Description 3 (Ollama llava-llama-3-8b - Supplementary Source):** {result_ollama_1}\n\n"
                 
-                "Your response should be in Hungarian. When discrepancies arise between the descriptions, "
+                "Your response should be in Chinese. When discrepancies arise between the descriptions, "
                 "resolve them by prioritizing the most factually accurate, logically consistent, and contextually appropriate details. "
                 "If subjective or stylistic elements from a source enhance the description without contradicting facts, integrate them where appropriate.\n\n"
                 
@@ -87,6 +87,7 @@ async def process_image(image_path):
                 "- **Interpretation and Overall Significance** (artistic, documentary, or symbolic meaning of the photograph)\n\n"
                 
                 "Ensure that the final analysis maintains a neutral, objective tone, focusing on the photograph’s historical and artistic value."
+                "Make sure the counting of objects. Crosscheck! if only one model count or models count differently, then do not include the number into the output"
             )
 
             data_generate = {"query": prompt, "modelType": "openai", "modelName": "gpt-4o"}
@@ -113,7 +114,7 @@ async def process_image(image_path):
         print(f"❌ Unexpected error processing {image_path}: {e}")
 
 
-CONCURRENT_TASKS = 3  # Maximum párhuzamos feldolgozások száma
+CONCURRENT_TASKS = 5  # Maximum párhuzamos feldolgozások száma
 
 async def process_with_semaphore(semaphore, image_path):
     """Egy kép feldolgozása a megadott szemináriummal."""

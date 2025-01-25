@@ -37,6 +37,10 @@ class ModelManager:
         self.openai_api_url = os.getenv("OPENAI_API_URL", "https://api.openai.com/v1/chat/completions")
         self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
 
+        self.deepseek_api_url = os.getenv("DEEPSEEK_API_URL", "https://api.deepseek.com/v1/chat/completions")
+        self.deepseek_api_key = os.getenv("DEEPSEEK_API_KEY", "")
+
+
     async def embed_query(self, text: str) -> List[float]:
         """
         Embed szöveg generálása a kiválasztott modell alapján.
@@ -71,38 +75,43 @@ class ModelManager:
             raise ValueError(f"Unsupported model type: {self.model_type}")
 
 
-    async def generate_stream(self, messages: List[Dict[str, str]]) -> AsyncGenerator[dict, None]:
-        if self.model_type == "ollama":
-            async for chunk in self._generate_ollama_stream(messages):
+    async def generate_stream(self, model_type, model_name, messages: List[Dict[str, str]]) -> AsyncGenerator[dict, None]:
+        if model_type == "ollama":
+            async for chunk in self._generate_ollama_stream(model_name,messages):
                 yield chunk
-        elif self.model_type == "openai":
-            async for chunk in self._generate_openai_stream(messages):
+        elif model_type == "openai":
+            async for chunk in self._generate_openai_stream(model_name,messages):
                 yield chunk
-        elif self.model_type == "groq":
-            async for chunk in self._generate_groq_stream(messages):
+        elif model_type == "groq":
+            async for chunk in self._generate_groq_stream(model_name,messages):
+                yield chunk
+        elif model_type == "deepseek":
+            async for chunk in self._generate_deepseek_stream(model_name,messages):
                 yield chunk
         else:
             raise ValueError(f"Unsupported model type: {self.model_type}")
 
-    async def _generate_ollama_stream(self, messages: List[Dict[str, str]]) -> AsyncGenerator[dict, None]:
+    async def _generate_ollama_stream(self, model_name, messages: List[Dict[str, str]]) -> AsyncGenerator[dict, None]:
         """
         Ollama modell streaming.
         A választ OpenAI-kompatibilis formátumra alakítjuk.
         """
         prompt = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
+
         async with httpx.AsyncClient(timeout=600) as client:
             try:
-                logger.info(f"model: {self.model_name}, prompt: {prompt}, 'stream': {True}", exc_info=True)
+                logger.info(f"Prompt: {prompt}")
                 response = await client.post(
                     self.ollama_api_url,
                     json={
-                        "model": self.model_name,
+                        "model": model_name,
                         "prompt": prompt,
-                        "options": {"num_ctx": 60000},
                         "stream": True
                     },
                     timeout=600
                 )
+                logger.info(response)
+
                 async for line in response.aiter_lines():
                     line = line.strip()
                     if not line:
@@ -111,15 +120,17 @@ class ModelManager:
                     try:
                         data = json.loads(line)
                     except json.JSONDecodeError:
-                        logger.warning(f"Ollama válasz nem JSON: {line}", exc_info=True)
+                        logger.warning(f"Ollama válasz nem JSON: {line}")
                         continue
+                
+                    logger.info(data)
 
                     # Stream végének kezelése
                     if data.get("done"):
                         yield {"choices": [{"delta": {}, "finish_reason": "stop"}]}
                         break
 
-                    # Tartalom lekérése az Ollama válaszból és átalakítás
+                    # Tartalom lekérése és átalakítása
                     content = data.get("response", "")
                     if content:
                         yield {
@@ -131,14 +142,13 @@ class ModelManager:
                             ]
                         }
             except httpx.RequestError as e:
-                logger.error(f"Ollama request error: {e}", exc_info=True)
+                logger.error(f"Ollama request error: {e}")
                 raise HTTPException(status_code=500, detail="Ollama API hiba.")
 
-    async def _generate_openai_stream(self, messages: List[Dict[str, str]]) -> AsyncGenerator[dict, None]:
-
+    async def _generate_openai_stream(self, model_name, messages: List[Dict[str, str]]) -> AsyncGenerator[dict, None]:
         headers = {"Authorization": f"Bearer {self.openai_api_key}"}
         body = {
-            "model": self.model_name,
+            "model": model_name,
             "messages": messages,
             "stream": True,
             "temperature": 0.1,
@@ -146,34 +156,73 @@ class ModelManager:
             "frequency_penalty": 0,
             "presence_penalty": 0,
         }
-        logger.info(messages, exc_info=True)
-        logger.info(f"Body: {body} Header: {headers} URL: {self.openai_api_url}", exc_info=True)
+
         async with httpx.AsyncClient(timeout=600) as client:
             async with client.stream("POST", self.openai_api_url, headers=headers, json=body) as response:
-                async for chunk in response.aiter_bytes():
-                    yield chunk
+                async for line in response.aiter_lines():
+                    line = line.strip()
+                    if not line or line == "data: [DONE]":
+                        continue  # Üres sorokat és befejező jelzést kihagyjuk
 
-    async def _generate_groq_stream(self, messages: List[Dict[str, str]]) -> AsyncGenerator[dict, None]:
+                    # Ha a sor "data: " előtaggal kezdődik, távolítsuk el
+                    if line.startswith("data: "):
+                        line = line[6:].strip()
+
+                    try:
+                        data = json.loads(line)
+                        #logger.info(data)
+                        if "choices" in data and data["choices"][0]["finish_reason"] is not None:
+                            break  # Befejezési jelzés esetén kilépünk
+                        yield data
+                    except json.JSONDecodeError:
+                        logger.warning(f"Nem sikerült JSON dekódolni: {line}")
+
+
+    async def _generate_groq_stream(self, model_name,messages: List[Dict[str, str]]) -> AsyncGenerator[dict, None]:
         headers = {
             "Authorization": f"Bearer {self.groq_api_key}",
             "Content-Type": "application/json"
         }
         body = {
-            "model": self.model_name,
+            "model": model_name,
             "messages": messages,
             "stream": True,
             "temperature": 0.1,
-            "max_tokens": 1000
+#            "max_tokens": 1000
         }
         async with httpx.AsyncClient(timeout=600) as client:
             async with client.stream("POST", self.groq_api_url, headers=headers, json=body) as response:
                 async for line in response.aiter_lines():
                     if line.startswith("data: "):
                         data = json.loads(line[6:])
+                        #logger.info(data)
                         if data["choices"][0]["finish_reason"] is not None:
                             break
                         yield data
 
+    async def _generate_deepseek_stream(self, model_name,messages: List[Dict[str, str]]) -> AsyncGenerator[dict, None]:
+        headers = {
+            "Authorization": f"Bearer {self.deepseek_api_key}",
+            "Content-Type": "application/json"
+        }
+        body = {
+            "model": model_name,
+            "messages": messages,
+            "stream": True
+        }
+        async with httpx.AsyncClient(timeout=600) as client:
+            async with client.stream("POST", self.deepseek_api_url, headers=headers, json=body) as response:
+                if response.status_code != 200:
+                    error_text = await response.aread()  # 🔥 Olvasd ki a teljes választ
+                    logger.error(f"DeepSeek API hibás kérés: {error_text.decode()}")  # 🔥 Naplózd az üzenetet
+                    raise HTTPException(status_code=400, detail=f"DeepSeek API Bad Request: {error_text.decode()}")
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        data = json.loads(line[6:])
+                        #logger.info(data)
+                        if "choices" in data and data["choices"][0]["finish_reason"] is not None:
+                            break
+                        yield data
 
     async def generate_complete(self, model_type, model_name, messages: List[Dict[str, str]]) -> str:
         """
@@ -185,6 +234,8 @@ class ModelManager:
             return await self._generate_openai_complete(model_name, messages)
         elif model_type == "groq":
             return await self._generate_groq_complete(model_name, messages)
+        elif model_type == "deepseek":
+            return await self._generate_deepseek_complete(model_name, messages)
         else:
             raise ValueError(f"Unsupported model type: {model_type}")
 
@@ -196,7 +247,7 @@ class ModelManager:
                 json={
                     "model": model_name,
                     "prompt": prompt,
-                    "options": {"num_ctx": 60000}
+#                    "options": {"num_ctx": 60000}
                 },
                 timeout=600
             )
@@ -247,15 +298,37 @@ class ModelManager:
             "model": model_name,
             "messages": messages,
             "temperature": 0.1,
-            "max_tokens": 60000
+#            "max_tokens": 60000
         }
+        logger.info(headers, exc_info=True)
+        logger.info(body, exc_info=True)
+        logger.info(self.groq_api_url, exc_info=True)
         async with httpx.AsyncClient(timeout=600) as client:
             response = await client.post(self.groq_api_url, headers=headers, json=body, timeout=None)
+            logger.info(response, exc_info=True)
             response_data = response.json()
+            logger.info(response_data, exc_info=True)
             if response.status_code != 200 or "choices" not in response_data:
                 raise ValueError(f"Groq API hiba: {response.text}")
+            logger.info(response_data["choices"][0]["message"]["content"])
             return response_data["choices"][0]["message"]["content"]
 
+    async def _generate_deepseek_complete(self, messages: List[Dict[str, str]]) -> str:
+        headers = {
+            "Authorization": f"Bearer {self.deepseek_api_key}",
+            "Content-Type": "application/json"
+        }
+        body = {
+            "model": model_name,
+            "messages": messages,
+            "stream": False
+        }
+        async with httpx.AsyncClient(timeout=600) as client:
+            response = await client.post(self.deepseek_api_url, headers=headers, json=body, timeout=None)
+            response_data = response.json()
+            if response.status_code != 200 or "choices" not in response_data:
+                raise ValueError(f"DeepSeek API hiba: {response.text}")
+            return response_data["choices"][0]["message"]["content"]
 
     # Metódus a Tool Calling funkcióhoz
     """
