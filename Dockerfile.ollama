@@ -14,8 +14,10 @@ RUN (ollama serve &); \
     ollama pull nsheth/llava-llama-3-8b-v1_1-int4 ;\
     echo "llama3.2-vision"; \
     ollama pull llama3.2-vision; \
-    echo "llava"; \
-    ollama pull llava; \
+    echo "bakllava"; \
+    ollama pull bakllava; \
+    echo "llava-llama3"; \
+    ollama pull llava-llama3; \
      echo "Done"; \
     pkill ollama
 

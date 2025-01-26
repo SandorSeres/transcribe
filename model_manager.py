@@ -511,6 +511,9 @@ class ModelManager:
             return await self._openai_image_processing(model_name, messages)
         elif model_type == "groq":
             return await self._groq_image_processing(model_name, messages)
+        elif model_type == "deepseek":
+            return await self._generate_deepseek_image_processing(model_name, messages)
+
         raise ValueError(f"Unsupported model type for image: {self.model_type}")
 
     async def _ollama_image_processing(self, model_name, messages: List[Dict[str, str]]) -> str:
@@ -638,3 +641,123 @@ class ModelManager:
             logging.error(f"Általános hiba: {e}")
             return f"Általános hiba: {e}"  
   
+  
+    async def a_generate_deepseek_image_processing(self, model_name, messages: List[Dict[str, str]]) -> str:
+        headers = {
+            "Authorization": f"Bearer {self.deepseek_api_key}",
+            "Content-Type": "application/json"
+        }
+        body = {
+            "model": model_name,
+            "messages": messages,
+            "content": "<image_placeholder>Describe each stage of this image.",
+            "images": ["./images/training_pipelines.png"] ,
+            "stream": False
+        }
+        async with httpx.AsyncClient(timeout=600) as client:
+            response = await client.post(self.deepseek_api_url, headers=headers, json=body, timeout=None)
+            response_data = response.json()
+            if response.status_code != 200 or "choices" not in response_data:
+                raise ValueError(f"DeepSeek API hiba: {response.text}")
+            return response_data["choices"][0]["message"]["content"]
+
+
+    async def a_generate_deepseek_image_processing(self, model_name: str, messages: List[Dict[str, str]]) -> str:
+        headers = {
+            "Authorization": f"Bearer {self.deepseek_api_key}",
+            "Content-Type": "application/json"
+        }
+
+        # **Naplózás bekapcsolása**
+        logging.info(f"🔹 DeepSeek model: {model_name}")
+        logging.info(f"🔹 Raw messages: {messages}")
+
+        # **Üzenetek átalakítása DeepSeek API formátumra**
+        processed_messages = []
+        for msg in messages:
+            new_msg = {"role": msg["role"], "content": []}
+            
+            # **Szöveges tartalom hozzáadása**
+            if "content" in msg:
+                new_msg["content"].append({"type": "text", "text": msg["content"]})
+
+            # **Képek hozzáadása base64 helyett HTTP URL-lel**
+            if "images" in msg:
+                for img in msg["images"]:
+                    if img.startswith("http"):  # Ha már URL, ne alakítsuk át
+                        new_msg["content"].append({"type": "image_url", "image_url": {"url": img}})
+                    else:
+                        logger.warning(f"❗ Base64 image detected, but DeepSeek may not support it: {img[:30]}...")
+                        new_msg["content"].append({
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{img}"}
+                        })
+            
+            processed_messages.append(new_msg)
+
+        body = {
+            "model": model_name,
+            "messages": processed_messages,
+            "stream": False  # **Ha nem támogatott, próbáljuk meg elhagyni**
+        }
+
+        # **Naplózzuk ki a JSON kérést**
+        logging.info(f"📤 Sending request to DeepSeek: {json.dumps(body, indent=2)}")
+
+        async with httpx.AsyncClient(timeout=600) as client:
+            response = await client.post(
+                self.deepseek_api_url,
+                headers=headers,
+                json=body,
+                timeout=None
+            )
+
+            # **Ha a válasz nem 200-as, akkor logoljuk ki**
+            if response.status_code != 200:
+                logging.error(f"❌ DeepSeek API error {response.status_code}: {response.text}")
+                raise ValueError(f"DeepSeek API error: {response.text}")
+
+            response_data = response.json()
+
+            # **Ha nincs `choices` mező a válaszban, akkor az API hibát adott**
+            if "choices" not in response_data:
+                logging.error(f"❌ Invalid DeepSeek API response: {response_data}")
+                raise ValueError(f"DeepSeek API error: {response.text}")
+
+            return response_data["choices"][0]["message"]["content"]
+
+    async def _generate_deepseek_image_processing(self, model_name, messages: List[Dict[str, str]]) -> str:
+        """
+        OpenAI OCR vagy képfeldolgozási feladatok végrehajtása.
+        """
+        headers = {
+            "Authorization": f"Bearer {self.deepseek_api_key}",
+            "Content-Type": "application/json"
+        }
+        prompt = messages[0].get("content")
+        base64_image = messages[0].get("images")
+        # Ellenőrizzük, hogy a base64_image tartalmazza-e a data:image prefixet
+        if not base64_image or not base64_image[0].startswith("data:image"):
+            base64_image = f"data:image/jpeg;base64,{base64_image}"
+        
+        body = {
+            "model": model_name,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": base64_image}}
+                    ]
+                }
+            ]
+        }
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(self.deepseek_api_url, headers=headers, json=body, timeout=600)
+            logging.error(f"{response}")
+            response_json = response.json()
+            logging.info(response)
+            # Ellenőrizzük, hogy a válaszban van-e szöveges tartalom
+            return response_json["choices"][0]["message"]["content"] if "choices" in response_json else "No response received."
+
