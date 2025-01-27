@@ -10,8 +10,6 @@ RUN apt update && apt install -y bash procps coreutils
 #    all-minilm (23M parameters; 46MB)
 RUN (ollama serve &); \
     sleep 5; \
-    echo "nsheth/llava-llama-3-8b-v1_1-int4"; \
-    ollama pull nsheth/llava-llama-3-8b-v1_1-int4 ;\
     echo "llama3.2-vision"; \
     ollama pull llama3.2-vision; \
     echo "bakllava"; \

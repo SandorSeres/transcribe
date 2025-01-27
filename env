@@ -1,0 +1,13 @@
+OPENAI_API_KEY=sk-XXXX
+MODEL=gpt-4o-mini
+TEMPERATURE=0
+SEED=42
+
+OLLAMA_CHAT_API_URL="http://ollama:11434/api/chat"
+OLLAMA_API_URL="http://ollama:11434/api/generate"
+
+OLLAMA_EMBEDDING_API_URL="http://ollama:11434/api/embeddings"
+OPENAI_API_URL="https://api.openai.com/v1/chat/completions"
+GROQ_API_URL=https://api.groq.com/openai/v1/chat/completions
+GROQ_API_KEY=gsk_XXXX
+DEEPSEEK_API_KEY=sk-XXXXX

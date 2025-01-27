@@ -30,10 +30,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 model_options = {
-    "ollama": ["llama3.2-vision", "llava-llama3", "deepseek-r1","nsheth/llava-llama-3-8b-v1_1-int4"],
+    "ollama": ["llama3.2-vision", "llava-llama3","bakllava"],
     "openai": ["gpt-4o", "gpt-4o-mini"],
     "deepseek"  : ["deepseek-chat","deepseek-reasoner"],
-    "groq"  : ["llama-3.2-11b-vision-preview","llama-3.2-90b-vision-preview","llama3-8b-8192","gemma2-9b-it","mixtral-8x7b-32768"]
+    "groq"  : ["llama-3.2-11b-vision-preview","llama-3.2-90b-vision-preview","llama3-8b-8192"]
 }
 
 # Jinja2 sablonok beállítása
