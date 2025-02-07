@@ -209,7 +209,7 @@
             formData.append("taskType", taskType);
             formData.append("modelType", modelType);
             formData.append("modelName", modelName);
-            endpoint = "/upload_ocr/";
+            endpoint = "/upload_ocr";
             isStreaming = false; // **Ez nem streaming!**
 
             addMessageToChatbox("user", textInput || "Kép feltöltve", URL.createObjectURL(fileInput.files[0]));
@@ -217,7 +217,7 @@
             formData.append("text", textInput);
             formData.append("modelType", modelType);
             formData.append("modelName", modelName);
-            endpoint = "/generate/";
+            endpoint = "/generate";
             isStreaming = true; // **Streaming módban dolgozunk**
 
             addMessageToChatbox("user", textInput);

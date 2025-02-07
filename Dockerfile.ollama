@@ -16,7 +16,9 @@ RUN (ollama serve &); \
     ollama pull bakllava; \
     echo "llava-llama3"; \
     ollama pull llava-llama3; \
-     echo "Done"; \
+    ollama pull deepseek-r1;\
+    ollama pull mistral-small:24b; \
+    echo "Done"; \
     pkill ollama
 
 # Környezeti változók beállítása a timeout növeléséhez

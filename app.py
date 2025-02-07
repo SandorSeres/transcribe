@@ -1,6 +1,8 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Form
 from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.templating import Jinja2Templates
 import os
 import logging
@@ -19,18 +21,46 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # FastAPI alkalmazás inicializálása
-app = FastAPI()
-
+app = FastAPI(
+    docs_url=None,  
+    redoc_url=None,
+    openapi_url=None,
+    redirect_slashes=True,
+    root_path="",
+    servers=[{"url": "/", "description": "Local server"}]  # Kikényszerített URL
+)
+# Explicit keep-alive header
+@app.middleware("http")
+async def add_keep_alive_header(request, call_next):
+    response = await call_next(request)
+    response.headers["Connection"] = "keep-alive"
+    return response
+    
 # CORS middleware hozzáadása az API-hoz
+# CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Engedélyezzük az összes domain-t
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Engedélyezett minden HTTP metódus
+    allow_headers=["*"]
 )
+
+# HTTPS Redirect Middleware 
+# Távoli elérés esetén kell!!
+# Lokális esetén nem!!!!
+app.add_middleware(HTTPSRedirectMiddleware)
+
+# Trusted Host Middleware
+app.add_middleware(TrustedHostMiddleware)
+
+# Kényszerítsd az OpenAI API hívásokat közvetlen netkapcsolatra
+os.environ["HTTP_PROXY"] = ""
+os.environ["HTTPS_PROXY"] = ""
+
+
 model_options = {
-    "ollama": ["llama3.2-vision", "llava-llama3","bakllava"],
+    "ollama": ["llama3.2-vision", "llava-llama3","bakllava","deepseek-r1","mistral-small:24b"],
     "openai": ["gpt-4o", "gpt-4o-mini"],
     "deepseek"  : ["deepseek-chat","deepseek-reasoner"],
     "groq"  : ["llama-3.2-11b-vision-preview","llama-3.2-90b-vision-preview","llama3-8b-8192"]
@@ -48,7 +78,8 @@ def get_model_manager():
 model_manager = get_model_manager()
 
 
-@app.post("/generate")
+@app.post("/generate", include_in_schema=False)
+@app.post("/generate/", include_in_schema=False)
 async def generate(
     text: str = Form("text"),
     modelType: str = Form("ollama"),
@@ -71,10 +102,14 @@ async def generate(
 
             yield f"data: {json.dumps(chunk)}\n\n"
 
-    return StreamingResponse(generate_response_stream(), media_type="text/event-stream")
-
+    #return StreamingResponse(generate_response_stream(), media_type="text/event-stream")
+    return StreamingResponse(generate_response_stream(), media_type="text/event-stream", headers={
+        "X-Accel-Buffering": "no",  # Engedélyezi az azonnali küldést
+        "Cache-Control": "no-cache",  # Kikapcsolja a cache-elést
+        "Connection": "keep-alive"  # Megakadályozza a kapcsolat megszakadását
+    })
 @app.post("/generate_full")
-async def generate_full(
+async def generate_full(    
     query: str = Form("text") ,
     modelType: str = Form("ollama"),
     modelName: str = Form("llama3.2-vision")
@@ -88,7 +123,7 @@ async def generate_full(
     return JSONResponse(content={"text": extracted_text})
    
    
-@app.post("/upload_ocr/")
+@app.post("/upload_ocr")
 async def upload_and_process_image(
     file: UploadFile = File(...),
     text: str = Form("text") ,
@@ -128,10 +163,51 @@ async def upload_and_process_image(
             "Provide only the transcription without any additional comments.\n"
             f"{text}"
             if taskType == "ocr" else
-             # analyse photo
-            "Act as a historical photography analysis assistant. Describe the photograph in a structured and detailed manner, step by step. Start by identifying the general time period, style, and possible origin based on clothing, objects, and setting. Then, analyze the composition, lighting, depth of field, and any notable photographic techniques. Consider the subject matter, including the people, their attire, expressions, and possible social or historical context. Discuss any symbolic or cultural elements, as well as potential interpretations of the image. If the photograph has historical or documentary significance, provide relevant background information. If it is a staged or portrait photograph, focus on the posed arrangement, the photographer's intent, and any notable features. Conclude with a summary of its historical impact and unique characteristics. \n\nDo it step by step. \n\n**Note:** be VERY precise when counting. If you are not sure in the number of objects (like persons) then do not mention numbers\n"
+                # analyse photo
+               """ Act as an advanced historical photography analysis assistant. Provide a structured and detailed analysis of any given black-and-white photograph while ensuring precision and avoiding assumptions. Follow these structured steps:"
+
+            1. Identify the time period and photographic style
+            Estimate the historical time period based on clothing, objects, and setting.
+            Describe the likely photographic process (e.g., daguerreotype, gelatin silver print, collodion).
+            Mention if the image exhibits signs of an early or modern photographic technique (e.g., visible grain, exposure quality).
+            
+            2. Describe the setting and environmental elements
+            Identify whether the image was taken in an urban, rural, or natural environment.
+            If buildings are present, describe their architectural style and possible time period.
+            If a natural landscape is visible, describe elements like trees, water, mountains, or other background features.
+            If the location appears identifiable, describe the elements that support this conclusion.
+            
+            3. Analyze the people in the scene
+            Describe their clothing, posture, and possible social status.
+            Identify accessories such as hats, gloves, parasols, uniforms, or other notable attire.
+            If they interact with objects, animals, or other people, describe the nature of the interaction.
+            Do not assume actions, emotions, or relationships unless clearly visible.
+            
+            4. List and analyze visible objects and animals
+            Identify objects present in the image and their possible function (e.g., furniture, vehicles, street signs).
+            If animals are included, describe their placement and role in the scene.
+            Do not add objects that are not clearly visible in the image.
+            
+            5. Analyze composition, lighting, and depth of field
+            Describe the positioning of subjects and focal points within the image.
+            Identify lighting conditions based on shadows and highlights.
+            Analyze the depth of field and sharpness—what is in focus, and what is blurred?
+            If applicable, note if the photograph captures motion or has a staged appearance.
+            
+            6. Avoid speculation or unnecessary assumptions
+            Do not introduce details that are not visually present in the image.
+            If unsure about the number of people, objects, or animals, use approximate language or indicate uncertainty.
+            Do not infer specific locations, time periods, or cultural practices unless clear evidence supports them.
+            
+            7. Provide a historical and cultural interpretation
+            If the image suggests a known historical or cultural practice, describe it while clarifying that it is inferred from historical context.
+            Discuss how the photograph reflects social norms, fashion, or daily life of its time.
+            If the image appears staged or documentary in nature, comment on its possible intent and significance.
+            Deliver a structured, detailed, and evidence-based analysis, ensuring maximum accuracy while maintaining a neutral and objective approach.
+            """
             f"{text}"
         )
+
 
         logger.info(f"Prompt: {prompt}")        
         # Külső ModelManager osztály process_image metódusának meghívása
@@ -166,4 +242,15 @@ async def home(request: Request):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        root_path="",
+        forwarded_allow_ips="*",
+        proxy_headers=True,
+        access_log=True,  # Logolja a kéréseket a hibakereséshez
+        timeout_keep_alive=300,  # A kapcsolat nyitva tartása hosszú stream esetén
+        log_level="debug"
+    )
+

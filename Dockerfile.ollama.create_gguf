@@ -1,0 +1,61 @@
+FROM ollama/ollama:latest
+
+# 🔹 Modell neve változóként
+ARG MODEL_NAME=mistral-ai/mistral-small-24b
+ARG MODEL_FILE_NAME=mistral-ai/mistral-small-24b
+ARG MODEL_ID=mistral-ai/mistral-small-24b
+
+# 🔹 Alapvető csomagok telepítése + letöltés + konverzió + takarítás egyetlen RUN-ban
+#        && python /root/llama.cpp/convert-hf-to-gguf.py /root/ollama_models --outfile /root/ollama_models/${MODEL_FILE_NAME} --outtype q8_0 \
+RUN apt update && apt install -y \
+    bash procps coreutils git-lfs curl python3 python3-pip git cmake make g++ jq \
+    && ln -s /usr/bin/python3 /usr/bin/python \
+    && pip install --no-cache-dir huggingface_hub torch numpy transformers sentencepiece \
+    && mkdir -p /root/.ollama/models/blobs /root/ollama_models \
+    && if [ ! -f "/root/.ollama/models/blobs/${MODEL_FILE_NAME}" ]; then \
+        echo "⚠️ GGUF fájl nem található, letöltés és konverzió..."; \
+        huggingface-cli download ${MODEL_NAME} --local-dir /root/ollama_models \
+        && git clone https://github.com/ggerganov/llama.cpp.git /root/llama.cpp \
+        && cd /root/llama.cpp && git pull \
+        && mkdir build && cd build && cmake .. && make -j$(nproc) \
+        && echo "📂 MODEL CONFIG:" && cat /root/ollama_models/config.json || echo "⚠️ config.json hiányzik!" \
+        && if ! jq -e '.architectures' /root/ollama_models/config.json > /dev/null; then \
+            echo "⚠️ architectures hiányzik! Hozzáadás..."; \
+            jq '. + { "architectures": ["LlamaForCausalLM"] }' /root/ollama_models/config.json > /root/ollama_models/config_fixed.json \
+            && mv /root/ollama_models/config_fixed.json /root/ollama_models/config.json; \
+        fi \
+        && python /root/llama.cpp/convert_hf_to_gguf.py /root/ollama_models --outfile /root/ollama_models/${MODEL_FILE_NAME} --outtype q8_0 \
+        && mv /root/ollama_models/*.gguf /root/.ollama/models/blobs/ \
+        && rm -rf /root/ollama_models /root/llama.cpp; \
+    else \
+        echo "✔️ GGUF modell már létezik, konverzió kihagyva."; \
+    fi \
+    && rm -rf /var/lib/apt/lists/*
+
+# 🔹 Modell regisztrálása Ollama-ban
+RUN ollama serve & sleep 15 \
+    && echo "FROM /root/.ollama/models/blobs/${MODEL_FILE_NAME}" > /root/Modelfile \
+    && ollama create ${MODEL_ID} -f /root/Modelfile \
+    && pkill ollama
+
+# 🔹 További modellek letöltése
+RUN ollama serve & sleep 15 \
+    && ollama pull llama3.2-vision \
+    && ollama pull bakllava \
+    && ollama pull llava-llama3 \
+    && ollama pull deepseek-r1 \
+    && ollama pull mistral-small:24b \
+    && pkill ollama
+
+# 🔹 Környezeti változók
+ENV OLLAMA_LOAD_TIMEOUT=30m  
+ENV OLLAMA_KEEP_ALIVE=10m    
+ENV OLLAMA_MAX_QUEUE=1024    
+ENV GIN_MODE=release
+
+# 🔹 Alapértelmezett ENTRYPOINT
+ENTRYPOINT ["ollama"]
+
+# 🔹 A szerver indítása
+CMD ["serve"]
+

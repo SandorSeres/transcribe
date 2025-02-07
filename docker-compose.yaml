@@ -1,3 +1,5 @@
+version: "3.8"
+
 services:
   ollama:
     build:
@@ -19,7 +21,6 @@ services:
               count: 1
               capabilities: [gpu]
 
-
   app:
     build:
       context: .
@@ -33,10 +34,22 @@ services:
       - ./images:/app/images
       - ./processed_texts:/app/processed_texts
     environment:
+      - FORCE_HTTPS=0
+#      - APP_URL=http://app:8000  # Ha van egy hasonló beállítás, tedd explicitté
       - OLLAMA_HOST=http://ollama:11434
       - NVIDIA_VISIBLE_DEVICES=all  # GPU láthatóság
       - NVIDIA_DRIVER_CAPABILITIES=all  # GPU funkciók engedélyezése
 
-volumes:
-  app_data:
+  ngrok:
+    image: ngrok/ngrok
+    restart: unless-stopped
+    command: "http app:8000  --host-header=app:8000"
+    environment:
+      - NGROK_AUTHTOKEN=2sTUGqjzViveZPPzqX0duew7Q2V_3yyC1NRojThcUHjqDfvXP
+      - NGROK_REGION=eu  # Az ngrok szerver régiójának beállítása
+      - NGROK_PROTOCOL=http  # Kényszerített HTTP mód
+    ports:
+      - "4040:4040"
+    depends_on:
+      - app
 
